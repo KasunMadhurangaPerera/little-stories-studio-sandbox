@@ -1,0 +1,395 @@
+<!doctype html>
+<!--
+  Little Stories Studio — Post to TikTok (Phase 1 frontend).
+  Single self-contained page. Talks only to the Cloudflare Worker backend
+  (API-CONTRACT.md). No access tokens or client secrets are embedded here.
+  Session: prefer HttpOnly cookie set by the Worker callback; paste +
+  sessionStorage is the fallback when third-party cookies are blocked.
+  Video bytes go browser → Worker (/app/publish/upload-chunk) → TikTok
+  because browser-direct CORS to TikTok upload hosts is unverified.
+  Deploy: copy this file to the public site (GitHub Pages). Set WORKER_URL
+  below to the Sandbox Worker URL (never point a trial page at production
+  without an explicit decision).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Post to TikTok — Little Stories Studio</title>
+<style>
+  body{font-family:system-ui,Arial,sans-serif;max-width:720px;margin:24px auto;padding:0 16px;color:#111}
+  h1{font-size:22px} h2{font-size:17px;margin-top:28px}
+  label{display:block;margin:10px 0 4px;font-weight:600}
+  input[type=text],select,textarea{width:100%;padding:8px;box-sizing:border-box}
+  video{width:100%;max-height:420px;background:#000}
+  .row{display:flex;gap:16px;flex-wrap:wrap}.row>div{flex:1;min-width:200px}
+  button{padding:10px 18px;font-size:15px;margin:8px 8px 8px 0;cursor:pointer}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .note{font-size:13px;color:#555}.err{color:#a00;font-weight:600}.ok{color:#070;font-weight:600}
+  .card{border:1px solid #ccc;border-radius:8px;padding:14px;margin:12px 0}
+  pre{white-space:pre-wrap;word-break:break-word;background:#f6f6f6;padding:10px;border-radius:6px;font-size:12px}
+  .mono{font-family:ui-monospace,monospace;font-size:13px}
+</style>
+</head>
+<body>
+<h1>Post to TikTok</h1>
+<p class="note">Little Stories Studio — approval-gated publishing. Nothing is sent to TikTok
+until you approve it here. While the app is unaudited, posts are private
+(Only me) and the connected account must be private.</p>
+
+<h2>1. Connect TikTok</h2>
+<div class="card">
+  <button id="connectBtn">Connect TikTok</button>
+  <button id="checkSessionBtn">I've connected — check session</button>
+  <label for="session">Session token (fallback if cookie session is blocked — paste from the connected page)</label>
+  <input type="text" id="session" placeholder="Paste session token" autocomplete="off">
+  <button id="saveSessionBtn">Save session</button>
+  <button id="disconnectBtn">Disconnect</button>
+  <p id="connectStatus" class="note"></p>
+</div>
+
+<h2>2. Choose your video</h2>
+<div class="card">
+  <label for="file">Video file (your own original video, MP4 / MOV / WebM)</label>
+  <input type="file" id="file" accept="video/mp4,video/quicktime,video/webm">
+  <p id="fileInfo" class="note"></p>
+  <video id="preview" controls playsinline></video>
+</div>
+
+<h2>3. Publishing settings</h2>
+<div class="card">
+  <p id="creatorLine" class="note">Connect first to load the creator.</p>
+  <label for="title">Title (editable)</label>
+  <input type="text" id="title" maxlength="2200" placeholder="Video title">
+  <label for="privacy">Privacy — you must choose (no default)</label>
+  <select id="privacy"><option value="" disabled selected>Select privacy…</option></select>
+  <div class="row">
+    <div><label><input type="checkbox" id="allowComment"> Allow comments</label></div>
+    <div><label><input type="checkbox" id="allowDuet"> Allow Duet</label></div>
+    <div><label><input type="checkbox" id="allowStitch"> Allow Stitch</label></div>
+  </div>
+  <p class="note">Comment, Duet and Stitch start off. Options your TikTok account has
+  disabled are greyed out.</p>
+  <label><input type="checkbox" id="disclosure"> This video promotes myself, a brand, a product or a service</label>
+  <div id="disclosureOpts" style="display:none;margin-left:20px">
+    <label><input type="checkbox" id="yourBrand"> Your brand</label>
+    <span id="yourBrandNote" class="note"></span><br>
+    <label><input type="checkbox" id="brandedContent"> Branded content</label>
+    <span id="brandedNote" class="note"></span>
+    <p class="note" id="disclosureHint"></p>
+  </div>
+  <p id="consentLine" class="note"></p>
+  <button id="approveBtn" disabled>Approve &amp; publish to TikTok</button>
+  <button id="draftBtn" disabled>Send to TikTok inbox as draft</button>
+  <p id="approveStatus"></p>
+</div>
+
+<h2>4. Upload &amp; status</h2>
+<div class="card">
+  <p id="uploadStatus" class="note">Nothing uploaded yet.</p>
+  <progress id="progress" value="0" max="100" style="width:100%"></progress>
+  <p><button id="resumeBtn" disabled>Resume upload</button>
+  <button id="recoverBtn" disabled>Close uncertain upload &amp; approve again</button></p>
+  <pre id="result"></pre>
+</div>
+
+<h2>5. History</h2>
+<div class="card"><button id="historyBtn">Load my approvals</button><pre id="history"></pre></div>
+
+<script>
+"use strict";
+/* Set this to the Sandbox / Phase-1 Worker URL. No secret goes here.
+ * Do NOT point at the live Muse Worker until you intentionally deploy there. */
+const WORKER_URL = "https://tiktok-callback-sandbox.kasuu-mperera.workers.dev";
+const CONSENT_MUSIC = "By posting, you agree to TikTok's Music Usage Confirmation";
+const CONSENT_BRANDED = "By posting, you agree to TikTok's Branded Content Policy and Music Usage Confirmation";
+
+const $ = (id) => document.getElementById(id);
+/* sessionStorage (not localStorage): cleared when the tab closes; less
+ * durable XSS/exfiltration surface than a persistent token store. */
+let session = sessionStorage.getItem("lss_session") || "";
+let csrf = sessionStorage.getItem("lss_csrf") || "";
+let creator = null;           // fresh creator_info from the Worker
+let file = null, fileHash = "", fileDuration = 0;
+let approvalId = null, uploadPlan = null, uploadedChunks = 0;
+
+function note(el, msg, cls) { const n = $(el); n.textContent = msg; n.className = cls || "note"; }
+function authHeaders(extra) {
+  const h = Object.assign({}, extra || {});
+  if (session) h["authorization"] = "Bearer " + session;
+  if (csrf) h["x-csrf-token"] = csrf;
+  return h;
+}
+async function api(path, body) {
+  const res = await fetch(WORKER_URL + path, {
+    method: body === undefined ? "GET" : "POST",
+    credentials: "include",
+    headers: body === undefined
+      ? authHeaders()
+      : authHeaders({ "content-type": "application/json" }),
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  let data = null; try { data = JSON.parse(text); } catch { /* HTML */ }
+  return { status: res.status, data, text, ok: res.ok };
+}
+function consentText() {
+  if ($("disclosure").checked && $("brandedContent").checked) return CONSENT_BRANDED;
+  return CONSENT_MUSIC;
+}
+function refreshConsent() {
+  $("consentLine").textContent = "By approving, you agree: \"" + consentText() + "\"";
+  const on = $("disclosure").checked;
+  $("disclosureOpts").style.display = on ? "block" : "none";
+  $("yourBrandNote").textContent = $("yourBrand").checked ? "Your video will be labeled as 'Promotional content'" : "";
+  $("brandedNote").textContent = $("brandedContent").checked ? "Your video will be labeled as 'Paid partnership'" : "";
+  $("disclosureHint").textContent = on && !$("yourBrand").checked && !$("brandedContent").checked
+    ? "You need to indicate if your content promotes yourself, a third party, or both." : "";
+  validateForm();
+}
+function validateForm() {
+  const privacy = $("privacy").value;
+  let ok = Boolean(file && fileHash && privacy && $("title").value.trim().length > 0);
+  if ($("disclosure").checked && !$("yourBrand").checked && !$("brandedContent").checked) ok = false;
+  $("approveBtn").disabled = !ok;
+  $("draftBtn").disabled = !(file && fileHash);
+  if ($("brandedContent").checked && privacy === "SELF_ONLY") {
+    note("approveStatus", "Branded content visibility cannot be set to private.", "err");
+    $("approveBtn").disabled = true;
+  } else if (ok) { note("approveStatus", "", "note"); }
+}
+async function sha256Hex(buf) {
+  const d = await crypto.subtle.digest("SHA-256", buf);
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/* --- 1. Connect --- */
+$("connectBtn").onclick = async () => {
+  note("connectStatus", "Opening TikTok authorization…");
+  const r = await fetch(WORKER_URL + "/app/begin", {
+    method: "POST", credentials: "include",
+    headers: { "content-type": "application/json" }, body: "{}",
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.authorize_url) { note("connectStatus", "Could not start authorization: " + (d.error || r.status), "err"); return; }
+  window.open(d.authorize_url, "_blank");
+  note("connectStatus", "Sign in on TikTok, approve the scopes, then click “I've connected” (or paste the session token if cookies are blocked).");
+};
+$("checkSessionBtn").onclick = async () => {
+  note("connectStatus", "Checking cookie session…");
+  const r = await api("/app/session");
+  if (!r.ok) {
+    note("connectStatus", "No cookie session yet. Paste the session token from the connected page, then Save session.", "err");
+    return;
+  }
+  if (r.data && r.data.csrf) {
+    csrf = r.data.csrf;
+    sessionStorage.setItem("lss_csrf", csrf);
+  }
+  await loadCreator();
+};
+$("saveSessionBtn").onclick = async () => {
+  session = $("session").value.trim();
+  if (!session) { note("connectStatus", "Paste the session token first.", "err"); return; }
+  sessionStorage.setItem("lss_session", session);
+  csrf = ""; sessionStorage.removeItem("lss_csrf");
+  await loadCreator();
+};
+$("disconnectBtn").onclick = async () => {
+  await api("/app/disconnect", {});
+  session = ""; csrf = ""; creator = null;
+  sessionStorage.removeItem("lss_session");
+  sessionStorage.removeItem("lss_csrf");
+  $("session").value = "";
+  $("creatorLine").textContent = "Connect first to load the creator.";
+  note("connectStatus", "Disconnected. This creator's app tokens and sessions were deleted. Muse legacy tokens were not touched.", "ok");
+};
+async function loadCreator() {
+  const r = await api("/app/creator");
+  if (!r.ok) { note("connectStatus", "Could not load creator: " + (r.data && r.data.error || r.status), "err"); return; }
+  creator = r.data;
+  $("creatorLine").textContent = "Posting as " + creator.creator_nickname + " (@" + creator.creator_username + "). " +
+    "Max video length: " + creator.max_video_post_duration_sec + "s.";
+  const sel = $("privacy"); sel.innerHTML = '<option value="" disabled selected>Select privacy…</option>';
+  for (const p of creator.privacy_level_options) {
+    const o = document.createElement("option"); o.value = p;
+    o.textContent = { SELF_ONLY: "Only me", FOLLOWER_OF_CREATOR: "Followers", MUTUAL_FOLLOW_FRIENDS: "Friends" }[p] || p;
+    sel.appendChild(o);
+  }
+  $("allowComment").disabled = creator.comment_disabled; $("allowDuet").disabled = creator.duet_disabled; $("allowStitch").disabled = creator.stitch_disabled;
+  $("allowComment").checked = false; $("allowDuet").checked = false; $("allowStitch").checked = false;
+  note("connectStatus", "Connected as " + creator.creator_nickname + ".", "ok");
+  validateForm();
+}
+
+/* --- 2. File + hash --- */
+$("file").onchange = async (e) => {
+  file = e.target.files[0] || null; fileHash = ""; fileDuration = 0; approvalId = null; uploadPlan = null;
+  if (!file) { note("fileInfo", ""); return; }
+  if (file.size > 2 * 1024 * 1024 * 1024) { note("fileInfo", "File is too large (2 GB limit).", "err"); file = null; return; }
+  $("preview").src = URL.createObjectURL(file);
+  fileDuration = await new Promise((resolve) => {
+    const v = $("preview");
+    v.onloadedmetadata = () => resolve(v.duration || 0);
+    v.onerror = () => resolve(0);
+  });
+  fileHash = await sha256Hex(await file.arrayBuffer());
+  note("fileInfo", file.name + " — " + file.size.toLocaleString() + " bytes, " + fileDuration.toFixed(1) +
+    "s, SHA-256 " + fileHash.slice(0, 16) + "…", "ok");
+  if (creator && fileDuration > creator.max_video_post_duration_sec) {
+    note("fileInfo", "Video is longer than the " + creator.max_video_post_duration_sec + "s limit for this creator.", "err");
+  }
+  if (!$("title").value) $("title").value = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ");
+  validateForm();
+};
+
+/* --- 3. Approve --- */
+function settings() {
+  return {
+    video_sha256: fileHash, video_name: file.name, video_size: file.size, video_duration_sec: fileDuration,
+    title: $("title").value.trim(), privacy_level: $("privacy").value,
+    disable_comment: !$("allowComment").checked, disable_duet: !$("allowDuet").checked, disable_stitch: !$("allowStitch").checked,
+    commercial_disclosure: $("disclosure").checked, your_brand: $("yourBrand").checked, branded_content: $("brandedContent").checked,
+    consent_text: consentText(),
+  };
+}
+$("privacy").onchange = validateForm;
+$("title").oninput = validateForm;
+for (const id of ["allowComment", "allowDuet", "allowStitch", "disclosure", "yourBrand", "brandedContent"]) $(id).onchange = refreshConsent;
+
+$("approveBtn").onclick = async () => {
+  note("approveStatus", "Submitting approval…");
+  const r = await api("/app/approve", settings());
+  if (!r.ok) { note("approveStatus", "Approval rejected: " + (r.data && (r.data.error + (r.data.detail ? " — " + JSON.stringify(r.data.detail) : "")) || r.status), "err"); return; }
+  approvalId = r.data.approval_id;
+  note("approveStatus", "Approved. Approval id " + approvalId + ". Verifying the file, then uploading…", "ok");
+  await runPublish("direct");
+};
+$("draftBtn").onclick = async () => {
+  const r = await api("/app/draft/init", { video_sha256: fileHash, video_name: file.name, video_size: file.size,
+    video_duration_sec: fileDuration, consent_text: CONSENT_MUSIC });
+  if (!r.ok) { note("uploadStatus", "Draft failed: " + (r.data && r.data.error || r.status), "err"); return; }
+  approvalId = r.data.approval_id; uploadPlan = r.data; uploadedChunks = 0;
+  note("uploadStatus", "Draft created. Uploading to your TikTok inbox…", "ok");
+  await uploadChunks();
+};
+
+/* --- 4. Verify hash, init, chunked upload, status polling --- */
+async function runPublish(kind) {
+  /* Re-hash immediately before transfer; abort on any mismatch. */
+  const buf = await file.arrayBuffer();
+  const again = await sha256Hex(buf);
+  if (again !== fileHash || buf.byteLength !== file.size) {
+    note("uploadStatus", "File changed since approval — upload aborted. Choose the file again and approve again.", "err"); return;
+  }
+  const v = await api("/app/publish/verify", { approval_id: approvalId, video_sha256: fileHash });
+  if (!v.ok) { note("uploadStatus", "Hash verification failed: " + (v.data && v.data.error || v.status), "err"); return; }
+  const init = await api("/app/publish/init", { approval_id: approvalId });
+  if (!init.ok) {
+    if (init.data && init.data.error === "init outcome uncertain") {
+      note("uploadStatus", "TikTok did not return a definite answer. The approval is held so it cannot publish twice. Use “Close uncertain upload & approve again”.", "err");
+      $("recoverBtn").disabled = false;
+    } else {
+      note("uploadStatus", "Publish init failed: " + (init.data && init.data.error || init.status), "err");
+    }
+    return;
+  }
+  uploadPlan = init.data; uploadedChunks = 0;
+  note("uploadStatus", "Uploading " + uploadPlan.total_chunk_count + " chunk(s) to TikTok…", "ok");
+  await uploadChunks();
+}
+/* Chunked upload via the Worker proxy. Do NOT set Content-Length (forbidden
+ * in browsers). Do NOT PUT directly to TikTok from the browser until Sandbox
+ * CORS is verified — that path is intentionally unused here. */
+async function uploadChunks() {
+  if (!uploadPlan || !file || !approvalId) return;
+  const total = uploadPlan.total_chunk_count, size = uploadPlan.video_size, chunkSize = uploadPlan.chunk_size;
+  for (let i = uploadedChunks; i < total; i++) {
+    const start = i * chunkSize, end = (i === total - 1) ? size - 1 : start + chunkSize - 1;
+    const chunk = file.slice(start, end + 1);
+    const range = "bytes " + start + "-" + end + "/" + size;
+    let ok = false;
+    for (let attempt = 0; attempt < 2 && !ok; attempt++) { /* same Content-Range re-PUT is idempotent at TikTok */
+      try {
+        const res = await fetch(WORKER_URL + "/app/publish/upload-chunk", {
+          method: "POST",
+          credentials: "include",
+          headers: authHeaders({
+            "content-type": "video/mp4",
+            "x-approval-id": approvalId,
+            "x-content-range": range,
+          }),
+          body: chunk,
+        });
+        ok = res.ok;
+        if (!ok) {
+          const errBody = await res.json().catch(() => ({}));
+          note("uploadStatus", "Chunk " + (i + 1) + " failed (HTTP " + res.status +
+            (errBody.error ? ": " + errBody.error : "") + "), retrying…", "err");
+        }
+      } catch (e) { note("uploadStatus", "Chunk " + (i + 1) + " network error, retrying…", "err"); }
+    }
+    if (!ok) {
+      note("uploadStatus", "Chunk " + (i + 1) + " failed twice. Use Resume upload to continue from the last completed chunk.", "err");
+      $("resumeBtn").disabled = false; return;
+    }
+    uploadedChunks = i + 1;
+    $("progress").value = Math.round(uploadedChunks / total * 100);
+  }
+  note("uploadStatus", "Upload complete. Checking TikTok publishing status…", "ok");
+  await pollStatus();
+}
+async function pollStatus() {
+  for (let i = 0; i < 12; i++) {
+    await new Promise((r) => setTimeout(r, 10000));
+    const s = await api("/app/publish/status", { approval_id: approvalId });
+    if (!s.ok) { note("uploadStatus", "Status check failed: " + (s.data && s.data.error || s.status), "err"); return; }
+    if (s.data.status === "PUBLISH_COMPLETE") {
+      note("uploadStatus", "Published! Publish ID: " + s.data.publish_id, "ok");
+      $("result").textContent = JSON.stringify({ status: "PUBLISH_COMPLETE", publish_id: s.data.publish_id, approval_id: approvalId }, null, 2);
+      return;
+    }
+    if (s.data.status === "FAILED") {
+      note("uploadStatus", "TikTok reported FAILED.", "err");
+      $("result").textContent = JSON.stringify(s.data, null, 2); return;
+    }
+    note("uploadStatus", "TikTok status: " + s.data.status + " (check " + (i + 1) + "/12)…");
+  }
+  note("uploadStatus", "Still processing after 2 minutes. Use status polling again later — the approval id is " + approvalId + ".");
+}
+$("resumeBtn").onclick = async () => {
+  const r = await api("/app/publish/resume", { approval_id: approvalId });
+  if (!r.ok) { note("uploadStatus", "Resume failed: " + (r.data && r.data.error || r.status), "err"); return; }
+  uploadPlan = r.data; uploadedChunks = 0; /* re-PUT from the start is safe: same Content-Range is idempotent */
+  note("uploadStatus", "Resuming upload…", "ok");
+  await uploadChunks();
+};
+$("recoverBtn").onclick = async () => {
+  const r = await api("/app/publish/recover", { approval_id: approvalId });
+  if (!r.ok) { note("uploadStatus", "Recover failed: " + (r.data && r.data.error || r.status), "err"); return; }
+  note("uploadStatus", "Uncertain upload closed. Approve again with a new approval to retry — the old approval can never publish.", "ok");
+  $("recoverBtn").disabled = true; approvalId = null;
+};
+$("historyBtn").onclick = async () => {
+  const r = await api("/app/history");
+  $("history").textContent = r.ok ? JSON.stringify(r.data, null, 2) : ("Error: " + (r.data && r.data.error || r.status));
+};
+
+/* Restore a pasted session, else try the HttpOnly cookie session. */
+(async () => {
+  if (session) { $("session").value = session; await loadCreator(); }
+  else {
+    const r = await api("/app/session");
+    if (r.ok) {
+      if (r.data && r.data.csrf) {
+        csrf = r.data.csrf;
+        sessionStorage.setItem("lss_csrf", csrf);
+      }
+      await loadCreator();
+    }
+  }
+})();
+refreshConsent();
+</script>
+</body>
+</html>
