@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — Little Stories Studio</title>
+<style>
+  body{font-family:system-ui,Arial,sans-serif;max-width:720px;margin:24px auto;padding:0 16px 48px;color:#111;line-height:1.55}
+  h1{font-size:22px;margin-bottom:4px}
+  h2{font-size:17px;margin-top:28px}
+  h3{font-size:15px;margin-top:18px}
+  p,li{font-size:15px}
+  .note{font-size:13px;color:#555}
+  .card{border:1px solid #ccc;border-radius:8px;padding:14px;margin:12px 0}
+  nav{margin:16px 0 24px;font-size:14px}
+  nav a{margin-right:14px;color:#064}
+  ul{padding-left:1.25em}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin:12px 0}
+  th,td{border:1px solid #ccc;padding:8px;text-align:left;vertical-align:top}
+  th{background:#f6f6f6}
+  a{color:#064}
+</style>
+</head>
+<body>
+<nav>
+  <a href="index.html">Post to TikTok</a>
+  <a href="terms.html">Terms of Service</a>
+  <a href="privacy.html">Privacy Policy</a>
+</nav>
+
+<h1>Privacy Policy</h1>
+<p class="note">Little Stories Studio — Post to TikTok<br>
+Last updated: 10 November 2026</p>
+
+<p>This Privacy Policy explains how Little Stories Studio (“we”, “us”) handles
+information when you use the “Post to TikTok” web application (the “Service”).
+It describes the Phase 1 product: a browser page and a Cloudflare Worker backend
+that connects to TikTok’s official Login Kit and Content Posting APIs.</p>
+<p>We do not sell your personal information. TikTok OAuth access tokens, refresh
+tokens, and the TikTok client secret are not exposed to the browser.</p>
+
+<h2>1. Who this policy covers</h2>
+<p>This policy applies to creators who connect a TikTok account through the
+Service’s Login Kit flow and use approval-gated Direct Post or inbox-draft
+publishing. It does not replace TikTok’s privacy policy for data TikTok
+processes after a video is uploaded or published on TikTok.</p>
+
+<h2>2. Information we process</h2>
+
+<h3>2.1 From TikTok (Login Kit and Content Posting APIs)</h3>
+<ul>
+  <li><strong>Account identifiers and profile fields</strong> available under the
+    granted scopes (for example open_id and display name from basic user info).</li>
+  <li><strong>Creator publishing settings</strong> from TikTok’s creator info API
+    (nickname, username, privacy options, comment/Duet/Stitch disabled flags,
+    maximum video duration).</li>
+  <li><strong>OAuth tokens</strong> (access token and refresh token), stored only
+    on the server under a per-creator Cloudflare KV key.</li>
+  <li><strong>Publishing identifiers</strong> such as publish_id and a
+    time-limited TikTok upload URL for an approved session.</li>
+  <li><strong>Publish status</strong> from TikTok (for example PUBLISH_COMPLETE
+    or FAILED).</li>
+</ul>
+
+<h3>2.2 From you in the Service</h3>
+<ul>
+  <li>Video metadata at approval time (file name, size, duration, SHA-256
+    fingerprint of the selected file).</li>
+  <li>Publishing choices and <strong>creator consent</strong>: title, privacy
+    level, comment/Duet/Stitch settings, commercial disclosure flags, the exact
+    TikTok-required consent declaration text, and the server-recorded consent time.</li>
+  <li>Session credentials (HttpOnly session cookie and/or a pasted session token;
+    the server stores a hash of the session token in Cloudflare D1).</li>
+  <li>A CSRF cookie used with cookie-authenticated requests.</li>
+</ul>
+
+<h3>2.3 Video file bytes</h3>
+<p>Videos are selected on your device. After you approve a Direct Post or start
+an inbox draft, chunk bytes are sent from your browser to our Cloudflare Worker
+upload endpoint and forwarded to TikTok’s upload URL for that session. The Worker
+does not keep a permanent video library. Transient in-memory processing during
+proxy upload may occur to complete the transfer. Published or drafted media then
+reside on TikTok under TikTok’s terms and privacy policy.</p>
+
+<h3>2.4 Technical and security data</h3>
+<ul>
+  <li>Request Origin checks against an allowlisted frontend origin list.</li>
+  <li>Approximate client IP for rate-limiting the public authorization-start
+    endpoint (short rate-limit windows in D1).</li>
+  <li>Audit events for approvals, hash verification, publish init, status changes,
+    disconnect, and similar Service actions (until deleted as described below).</li>
+</ul>
+
+<h2>3. How we use information</h2>
+<ul>
+  <li>Authenticate you with TikTok and maintain your creator connection (including
+    refreshing access tokens when near expiry).</li>
+  <li>Display creator settings and enforce validations, including private
+    (“Only me”) restrictions while the TikTok developer application is unaudited.</li>
+  <li>Record your explicit approval and build TikTok publish requests only from
+    that frozen record.</li>
+  <li>Transfer approved video bytes to TikTok and report status.</li>
+  <li>Reduce duplicate-publish risk when initialization is uncertain (held claim;
+    reconcile before retrying with a new approval).</li>
+  <li>Show your own approval history.</li>
+  <li>Secure the Service (sessions, CSRF for cookie auth, origin checks, rate limits).</li>
+  <li>Operate and debug the Service.</li>
+</ul>
+
+<h2>4. Where information is stored (Cloudflare and TikTok)</h2>
+<table>
+  <thead>
+    <tr><th>Data</th><th>Storage</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Creator OAuth tokens</td>
+      <td>Cloudflare KV (<code>tokens:&lt;open_id&gt;</code>)</td>
+      <td>Server-only. Refresh writes back to the same per-creator key. Not the
+        separate Muse automation legacy key.</td>
+    </tr>
+    <tr>
+      <td>OAuth state</td>
+      <td>Cloudflare KV</td>
+      <td>Short TTL, single-use Login Kit state.</td>
+    </tr>
+    <tr>
+      <td>Sessions, approvals, audit log, rate limits</td>
+      <td>Cloudflare D1</td>
+      <td>Session tokens stored hashed. Rows scoped by your open_id where applicable.</td>
+    </tr>
+    <tr>
+      <td>Session / CSRF cookies</td>
+      <td>Browser + Worker Set-Cookie</td>
+      <td>Session cookie: HttpOnly, Secure, SameSite=None for cross-origin frontend use.
+        Paste fallback may use sessionStorage.</td>
+    </tr>
+    <tr>
+      <td>Published / draft videos</td>
+      <td>TikTok</td>
+      <td>After transfer, TikTok stores and processes the media.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>5. Sharing</h2>
+<ul>
+  <li><strong>TikTok</strong> — OAuth, creator info, publish/draft init, video upload,
+    status checks, and token revocation on Disconnect or Delete my Service data.</li>
+  <li><strong>Cloudflare</strong> — Worker, KV, and D1 hosting for the Service.</li>
+</ul>
+<p>We do not sell personal information. We may disclose information if required by
+law or to protect the security and integrity of the Service.</p>
+
+<h2>6. Retention and deletion</h2>
+<p>This section separates <strong>what the product implements today</strong> from
+<strong>our retention policy goals</strong>.</p>
+
+<h3>6.1 Currently implemented</h3>
+<ul>
+  <li><strong>App sessions:</strong> expire after 7 days unless revoked earlier.</li>
+  <li><strong>Pending unverified OAuth records:</strong> KV TTL of 7 days when stored.</li>
+  <li><strong>OAuth state:</strong> short-lived (minutes) and single-use.</li>
+  <li><strong>TikTok upload URLs:</strong> treated as valid for about one hour after init.</li>
+  <li><strong>Creator OAuth tokens:</strong> kept until Disconnect, Delete my Service data,
+    or the tokens become unusable.</li>
+  <li><strong>Disconnect:</strong> revokes the creator-app token (best effort), deletes
+    <code>tokens:&lt;open_id&gt;</code> and related pending keys, deletes sessions, and marks
+    open approvals failed. Approval history and audit rows for that creator remain
+    until deleted as below.</li>
+  <li><strong>Delete my Service data</strong> (<code>POST /app/delete-data</code>, also available
+    in the app): for the authenticated creator only, deletes creator app tokens,
+    sessions, all approval rows, and all audit_log rows for that open_id, and clears
+    session cookies. It does <em>not</em> delete videos already on TikTok, and it does
+    <em>not</em> modify Muse automation legacy KV keys.</li>
+  <li><strong>Automatic multi-month purge of approvals/audit logs:</strong> not implemented.
+    Undeleted rows remain until you use Delete my Service data or an operator removes them.</li>
+</ul>
+
+<h3>6.2 Retention policy (operational target)</h3>
+<ul>
+  <li>We aim to retain undeleted approval history and audit logs only as long as
+    needed to operate the Service, investigate abuse, and support disputes —
+    and <strong>not longer than 24 months</strong> from the record’s creation date.</li>
+  <li>Automated 24-month purge is a <strong>planned operational control</strong>, not a
+    shipped feature in Phase 1. Until that automation exists, use Delete my Service
+    data (or contact support) for earlier deletion of Service-side records.</li>
+  <li>Rate-limit counters are short-lived operational data and are not used as a
+    creator profile.</li>
+</ul>
+
+<h2>7. Your choices: consent, disconnect, delete</h2>
+<ul>
+  <li><strong>Connect:</strong> TikTok Login Kit requests scopes such as basic profile,
+    video upload, and video publish.</li>
+  <li><strong>Approve each Direct Post:</strong> you choose settings and confirm TikTok’s
+    required consent declaration before publishing APIs are called.</li>
+  <li><strong>Inbox draft:</strong> you start a draft upload; remaining caption/visibility
+    choices are completed in the TikTok app.</li>
+  <li><strong>Disconnect:</strong> ends this app’s TikTok connection as described in §6.1.</li>
+  <li><strong>Delete my Service data:</strong> removes Service-side creator data as
+    described in §6.1.</li>
+  <li>You may also revoke third-party access in TikTok’s account settings, subject
+    to TikTok’s interface.</li>
+</ul>
+
+<h2>8. Security</h2>
+<p>We apply practical safeguards aligned with the implementation, including
+server-side OAuth token storage, hashed session tokens, origin allowlisting,
+CSRF checks for cookie-authenticated requests, rate limiting on authorization
+start, and single-use approval claiming. No method of transmission or storage is
+perfectly secure, and we do not claim absolute security guarantees.</p>
+
+<h2>9. Children</h2>
+<p>The Service is intended for users who are allowed to use TikTok and to
+authorize apps under TikTok’s and applicable legal age requirements. It is not
+directed at children who are not permitted to use TikTok.</p>
+
+<h2>10. Contact</h2>
+<div class="card">
+  <p>Privacy and support questions about Little Stories Studio Post to TikTok:</p>
+  <p><strong>Support email:</strong>
+    <a href="mailto:kasuu.mperera@gmail.com">kasuu.mperera@gmail.com</a></p>
+  <p>Related pages:
+    <a href="terms.html">Terms of Service</a> ·
+    <a href="index.html">Post to TikTok</a></p>
+</div>
+
+<h2>11. Changes</h2>
+<p>We may update this Privacy Policy as the Service changes. The “Last updated”
+date will be revised when we publish changes.</p>
+
+<p class="note">This policy describes Phase 1 Post to TikTok behavior. It is not
+legal advice and does not claim certifications or compliance seals.</p>
+</body>
+</html>
