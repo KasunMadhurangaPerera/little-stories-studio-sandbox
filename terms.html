@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms of Service — Little Stories Studio</title>
+<style>
+  body{font-family:system-ui,Arial,sans-serif;max-width:720px;margin:24px auto;padding:0 16px 48px;color:#111;line-height:1.55}
+  h1{font-size:22px;margin-bottom:4px}
+  h2{font-size:17px;margin-top:28px}
+  h3{font-size:15px;margin-top:18px}
+  p,li{font-size:15px}
+  .note{font-size:13px;color:#555}
+  .card{border:1px solid #ccc;border-radius:8px;padding:14px;margin:12px 0}
+  .flag{border-left:3px solid #a60;background:#fff8f0;padding:10px 12px;margin:14px 0;font-size:14px}
+  nav{margin:16px 0 24px;font-size:14px}
+  nav a{margin-right:14px;color:#064}
+  ul{padding-left:1.25em}
+  a{color:#064}
+</style>
+</head>
+<body>
+<nav>
+  <a href="index.html">Post to TikTok</a>
+  <a href="terms.html">Terms of Service</a>
+  <a href="privacy.html">Privacy Policy</a>
+</nav>
+
+<h1>Terms of Service</h1>
+<p class="note">Little Stories Studio — Post to TikTok<br>
+Last updated: 10 November 2026</p>
+
+<p>These Terms of Service (“Terms”) govern your use of the Little Stories Studio
+“Post to TikTok” web application (the “Service”). By connecting a TikTok account
+or using the Service, you agree to these Terms. If you do not agree, do not use
+the Service.</p>
+
+<h2>1. Who we are</h2>
+<p>Little Stories Studio provides a creator-facing tool that helps you approve
+and send your own videos to your TikTok account. The Service is operated in
+connection with the Little Stories Studio project and is delivered through a
+web page and a Cloudflare Worker backend.</p>
+
+<h2>2. What the Service does</h2>
+<p>The Service lets you:</p>
+<ul>
+  <li><strong>Connect TikTok</strong> using TikTok Login Kit (OAuth v2) with the
+    scopes needed to read basic account information and to upload or publish video.</li>
+  <li><strong>Review creator settings</strong> returned by TikTok (for example
+    available privacy options and interaction limits) before you approve a post.</li>
+  <li><strong>Select a video file on your device</strong>, preview it, and review
+    a SHA-256 fingerprint of that file.</li>
+  <li><strong>Approve Direct Post publishing</strong> with a title, privacy level,
+    comment/Duet/Stitch preferences, commercial-content disclosures, and TikTok’s
+    required consent declaration.</li>
+  <li><strong>Send a video to your TikTok inbox as a draft</strong> (TikTok
+    <code>video.upload</code> / inbox draft flow), so you can finish caption and
+    visibility settings in the TikTok app.</li>
+  <li><strong>View a history of your own approval records</strong> created through
+    this Service.</li>
+  <li><strong>Disconnect</strong> your TikTok connection for this creator app flow.</li>
+</ul>
+<p>Nothing is submitted to TikTok’s publishing APIs until you explicitly approve
+a post or start an inbox-draft action in the Service.</p>
+
+<h2>3. TikTok relationship</h2>
+<p>TikTok is provided by ByteDance / TikTok. Your use of TikTok remains subject
+to TikTok’s Terms of Service, Community Guidelines, Music Usage Confirmation,
+Branded Content Policy, and any other TikTok rules that apply to your account
+and content.</p>
+<p>Little Stories Studio is an independent tool that uses TikTok’s official APIs
+(Login Kit and Content Posting API). We are not TikTok, and we do not control
+TikTok’s availability, moderation, ranking, or final processing of your videos.</p>
+<p>While the TikTok developer application used by the Service is unaudited /
+restricted, the Service is designed to enforce private (“Only me” / SELF_ONLY)
+publishing where that restriction applies. TikTok may impose additional account
+or API limits.</p>
+
+<h2>4. Eligibility and accounts</h2>
+<ul>
+  <li>You must be allowed to use TikTok and to authorize third-party apps under
+    applicable law and TikTok’s rules.</li>
+  <li>You must connect only a TikTok account you are authorized to operate.</li>
+  <li>You are responsible for safeguarding any session token shown to you and
+    for activity performed while your session is valid.</li>
+</ul>
+
+<h2>5. Your content and responsibilities</h2>
+<p>You are solely responsible for the videos, titles, captions, disclosures, and
+settings you approve. You represent and warrant that:</p>
+<ul>
+  <li>you own the video or have all rights needed to upload and publish it;</li>
+  <li>the content complies with TikTok’s rules and with applicable law
+    (including intellectual property, privacy, publicity, and advertising rules);</li>
+  <li>commercial or branded content is disclosed accurately when required;</li>
+  <li>you will not use the Service to upload malware, to abuse TikTok’s APIs,
+    to attempt unauthorized access, or to publish content you are not allowed to share.</li>
+</ul>
+<p>Video files remain on your device until you approve a transfer. During upload,
+video bytes are sent through our Cloudflare Worker upload proxy to TikTok’s
+upload endpoint for the approved publish or draft session. We do not operate a
+general-purpose video hosting library for your finished posts; published or
+drafted videos are stored and displayed by TikTok under TikTok’s policies.</p>
+
+<h2>6. Approvals, uploads, and status</h2>
+<p>When you approve a Direct Post, the Service stores your chosen settings as a
+single-use approval record, verifies the file fingerprint you submit, initializes
+publishing with TikTok, transfers the video in chunks, and polls TikTok for
+status.</p>
+<p>If TikTok’s publish initialization result is uncertain (for example a network
+timeout with no definite success or failure response), the Service holds that
+approval so it cannot be initialized again. You must reconcile the uncertain
+operation in the Service (close/recover that approval) before approving again
+and retrying with a new approval. This reduces the risk of duplicate publishing
+from the same approval. The Service does not automatically retry an uncertain
+initialization as if it had failed.</p>
+<p>Inbox drafts use a related flow that creates a draft notification in TikTok;
+you complete remaining settings in the TikTok application.</p>
+<p>We do not guarantee that every upload will succeed. Failures may occur because
+of network conditions, TikTok API errors, expired upload sessions, invalid
+settings, account restrictions, or Service limits.</p>
+
+<h2>7. Acceptable use</h2>
+<p>You may not:</p>
+<ul>
+  <li>interfere with the Service, its rate limits, or other users’ sessions;</li>
+  <li>attempt to extract OAuth access tokens, client secrets, or another
+    creator’s data;</li>
+  <li>bypass privacy or consent controls presented by the Service or by TikTok;</li>
+  <li>use the Service for unlawful, deceptive, or harmful purposes.</li>
+</ul>
+
+<h2>8. Service availability and changes</h2>
+<p>The Service is provided on an “as is” and “as available” basis. Features may
+change as TikTok’s APIs, Cloudflare infrastructure, or the product evolve. We
+may suspend or discontinue parts of the Service, including during Sandbox or
+pre-audit phases.</p>
+<p>We do not warrant uninterrupted operation, error-free publishing, or that
+TikTok will accept or retain any particular video.</p>
+
+<h2>9. Limitation of liability</h2>
+<p>To the fullest extent permitted by applicable law, Little Stories Studio and
+its operators are not liable for indirect, incidental, special, consequential,
+or punitive damages; loss of profits, data, or goodwill; or damages arising from
+TikTok’s actions, API outages, content removals, or account enforcement.</p>
+<p>Where the Service is provided for a fee, our aggregate liability for claims
+relating to the Service is limited to the amount you paid us for the Service in
+the three months before the claim arose. Where the Service is provided free of
+charge, our liability is limited to the maximum extent permitted by law.</p>
+<p>Nothing in these Terms excludes or limits any liability or consumer right that
+cannot be excluded or limited under applicable law, including liability for death
+or personal injury caused by negligence, fraud or fraudulent misrepresentation,
+or any other liability that applicable law does not allow us to limit.</p>
+
+<h2>10. Termination, disconnection, and data deletion</h2>
+<p>You may stop using the Service at any time.</p>
+<p><strong>Disconnect</strong> revokes the creator-app TikTok token associated with
+your connection (best effort), removes that creator’s app token records and
+sessions used by this Service, and marks open approvals as disconnected.
+Approval history may remain until deleted as described below.</p>
+<p><strong>Delete my Service data</strong> removes this Service’s per-creator OAuth
+token records, sessions, approval history, and audit records for your connection.
+Neither Disconnect nor Delete my Service data deletes videos already published or
+drafted on TikTok; manage those in the TikTok app. Details are in the
+<a href="privacy.html">Privacy Policy</a>.</p>
+<p>We may suspend access if we reasonably believe these Terms or TikTok’s rules
+have been violated, or if required for security or legal reasons.</p>
+
+<h2>11. Contact</h2>
+<div class="card">
+  <p>Questions about these Terms or the Post to TikTok Service may be sent to:</p>
+  <p><strong>Support email:</strong>
+    <a href="mailto:kasuu.mperera@gmail.com">kasuu.mperera@gmail.com</a></p>
+  <p>Related pages:
+    <a href="privacy.html">Privacy Policy</a> ·
+    <a href="index.html">Post to TikTok</a></p>
+</div>
+
+<h2>12. Changes to these Terms</h2>
+<p>We may update these Terms from time to time. The “Last updated” date above
+will change when we do. Continued use of the Service after an update means you
+accept the revised Terms, except where applicable law requires additional notice
+or consent.</p>
+
+<p class="note">These Terms describe the Phase 1 Post to TikTok product behavior
+as implemented. They are not a substitute for legal advice.</p>
+</body>
+</html>
